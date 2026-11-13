@@ -1,0 +1,45 @@
+
+name: Build Cricket Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Create Android project
+        run: |
+          mkdir -p /tmp/cricket_source
+          cp pubspec.yaml /tmp/cricket_source/
+          cp -r lib /tmp/cricket_source/
+          flutter create --platforms=android --project-name cricket_video_analyzer .
+          cp /tmp/cricket_source/pubspec.yaml .
+          cp -r /tmp/cricket_source/lib/. lib/
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cricket-video-analyzer-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
