@@ -1,4 +1,4 @@
-
+import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -94,7 +94,7 @@ class _CricketHomeState extends State<CricketHome> {
       final localController =
           VideoPlayerController.file(
         // dart:io File is used below.
-        getVideoFile(video.path),
+        File(video.path),
       );
 
       await localController.initialize();
