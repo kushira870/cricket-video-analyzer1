@@ -1,0 +1,19 @@
+
+name: cricket_video_analyzer
+description: Cricket Video Analysis Android App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  video_player: ^2.9.2
+  image_picker: ^1.1.2
+  shared_preferences: ^2.3.2
+
+flutter:
+  uses-material-design: true
