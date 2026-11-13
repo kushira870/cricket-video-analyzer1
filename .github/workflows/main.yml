@@ -1,201 +1,46 @@
 
-import 'dart:io';
-import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart';
+name: Build Cricket Android APK
 
-void main() => runApp(const CricketApp());
+on:
+  workflow_dispatch:
 
-class CricketApp extends StatelessWidget {
-  const CricketApp({super.key});
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'Cricket Video Analyzer',
-    theme: ThemeData.dark().copyWith(
-      scaffoldBackgroundColor: const Color(0xFF101820),
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.tealAccent, brightness: Brightness.dark),
-    ),
-    home: const AnalyzerPage(),
-  );
-}
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-class BallMark {
-  final double x, y;
-  final int ms;
-  const BallMark(this.x, this.y, this.ms);
-  Map<String, dynamic> toJson() => {'x': x, 'y': y, 'ms': ms};
-}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-class AnalyzerPage extends StatefulWidget {
-  const AnalyzerPage({super.key});
-  @override
-  State<AnalyzerPage> createState() => _AnalyzerPageState();
-}
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-class _AnalyzerPageState extends State<AnalyzerPage> {
-  VideoPlayerController? player;
-  final notes = TextEditingController();
-  final marks = <BallMark>[];
-  String mode = 'Batting';
-  bool marking = false;
-  double speed = 1;
-  String? videoPath;
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-  Future<void> pickVideo() async {
-    final file = await ImagePicker().pickVideo(source: ImageSource.gallery);
-    if (file == null) return;
-    await player?.dispose();
-    final next = VideoPlayerController.file(File(file.path));
-    await next.initialize();
-    next.addListener(refresh);
-    await next.setPlaybackSpeed(speed);
-    setState(() { player = next; videoPath = file.path; marks.clear(); });
-  }
+      - name: Create Android project
+        run: |
+          mkdir -p /tmp/cricket_backup
+          cp pubspec.yaml /tmp/cricket_backup/
+          cp -r lib /tmp/cricket_backup/
+          flutter create --platforms=android --project-name cricket_video_analyzer .
+          cp /tmp/cricket_backup/pubspec.yaml .
+          cp -r /tmp/cricket_backup/lib/. lib/
 
-  void refresh() { if (mounted) setState(() {}); }
+      - name: Install dependencies
+        run: flutter pub get
 
-  Future<void> saveSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = jsonEncode({
-      'mode': mode,
-      'notes': notes.text,
-      'videoPath': videoPath,
-      'marks': marks.map((m) => m.toJson()).toList(),
-      'savedAt': DateTime.now().toIso8601String(),
-    });
-    await prefs.setString('lastSession', data);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Analysis saved on this device')));
-  }
+      - name: Build Android APK
+        run: flutter build apk --release
 
-  Future<void> loadSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('lastSession');
-    if (raw == null) return;
-    final data = jsonDecode(raw) as Map<String, dynamic>;
-    final savedPath = data['videoPath'] as String?;
-    if (savedPath != null && File(savedPath).existsSync()) {
-      await player?.dispose();
-      final next = VideoPlayerController.file(File(savedPath));
-      await next.initialize();
-      next.addListener(refresh);
-      await next.setPlaybackSpeed(speed);
-      player = next;
-      videoPath = savedPath;
-    }
-    setState(() {
-      mode = data['mode'] as String? ?? 'Batting';
-      notes.text = data['notes'] as String? ?? '';
-      marks.clear();
-      for (final entry in (data['marks'] as List<dynamic>? ?? [])) {
-        final m = entry as Map<String, dynamic>;
-        marks.add(BallMark((m['x'] as num).toDouble(), (m['y'] as num).toDouble(), m['ms'] as int));
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    player?.removeListener(refresh);
-    player?.dispose();
-    notes.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = player;
-    final ready = p != null && p.value.isInitialized;
-    final duration = ready ? p.value.duration.inMilliseconds : 0;
-    final position = ready ? p.value.position.inMilliseconds.clamp(0, duration) : 0;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Cricket Video Analyzer')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        Wrap(spacing: 8, children: [
-          FilledButton.icon(onPressed: pickVideo, icon: const Icon(Icons.video_library), label: const Text('Import video')),
-          OutlinedButton(onPressed: loadSession, child: const Text('Load saved')),
-        ]),
-        const SizedBox(height: 12),
-        Container(
-          color: Colors.black,
-          child: ready ? AspectRatio(
-            aspectRatio: p.value.aspectRatio,
-            child: GestureDetector(
-              child: LayoutBuilder(builder: (context, constraints) => GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: marking ? (d) {
-                  setState(() => marks.add(BallMark(
-                    (d.localPosition.dx / constraints.maxWidth).clamp(0, 1),
-                    (d.localPosition.dy / constraints.maxHeight).clamp(0, 1),
-                    p.value.position.inMilliseconds,
-                  )));
-                } : null,
-                child: Stack(fit: StackFit.expand, children: [
-                  VideoPlayer(p),
-                  CustomPaint(painter: TrackPainter(marks)),
-                ]),
-              )),
-            ),
-          ) : const SizedBox(height: 220, child: Center(child: Text('Import a cricket video to begin'))),
-        ),
-        if (ready) ...[
-          Slider(value: position.toDouble(), min: 0, max: duration > 0 ? duration.toDouble() : 1,
-            onChanged: (v) => p.seekTo(Duration(milliseconds: v.round()))),
-          Row(children: [
-            IconButton(onPressed: () => p.seekTo(Duration(milliseconds: (position - 100).clamp(0, duration))), icon: const Icon(Icons.skip_previous)),
-            IconButton(onPressed: () => p.value.isPlaying ? p.pause() : p.play(), icon: Icon(p.value.isPlaying ? Icons.pause : Icons.play_arrow)),
-            IconButton(onPressed: () => p.seekTo(Duration(milliseconds: (position + 100).clamp(0, duration))), icon: const Icon(Icons.skip_next)),
-            const Spacer(),
-            Text('${(position / 1000).toStringAsFixed(1)}s / ${(duration / 1000).toStringAsFixed(1)}s'),
-          ]),
-          Wrap(spacing: 8, children: [0.25, 0.5, 1.0].map((v) => ChoiceChip(
-            label: Text('${v}x'), selected: speed == v,
-            onSelected: (_) async { speed = v; await p.setPlaybackSpeed(v); setState(() {}); },
-          )).toList()),
-        ],
-        const SizedBox(height: 16),
-        SegmentedButton<String>(segments: const [
-          ButtonSegment(value: 'Batting', label: Text('Batting')),
-          ButtonSegment(value: 'Bowling', label: Text('Bowling')),
-          ButtonSegment(value: 'Tracking', label: Text('Tracking')),
-        ], selected: {mode}, onSelectionChanged: (v) => setState(() => mode = v.first)),
-        const SizedBox(height: 12),
-        Text(mode == 'Batting' ? 'Review stance, head position, bat swing and footwork.' :
-          mode == 'Bowling' ? 'Review run-up, arm alignment, release and follow-through.' :
-          'Pause the video, enable marking, and tap each ball position in sequence.'),
-        if (mode == 'Tracking') ...[
-          SwitchListTile(title: const Text('Tap video to mark ball'), value: marking,
-            onChanged: (v) => setState(() => marking = v)),
-          Text('Ball points: ${marks.length}'),
-          TextButton(onPressed: marks.isEmpty ? null : () => setState(() => marks.removeLast()), child: const Text('Undo last point')),
-          TextButton(onPressed: marks.isEmpty ? null : () => setState(marks.clear), child: const Text('Clear points')),
-        ],
-        const SizedBox(height: 12),
-        TextField(controller: notes, minLines: 3, maxLines: 6,
-          decoration: const InputDecoration(border: OutlineInputBorder(), labelText: 'Coaching notes')),
-        const SizedBox(height: 12),
-        FilledButton.icon(onPressed: saveSession, icon: const Icon(Icons.save), label: const Text('Save analysis')),
-      ]),
-    );
-  }
-}
-
-class TrackPainter extends CustomPainter {
-  final List<BallMark> marks;
-  TrackPainter(this.marks);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.lightGreenAccent..strokeWidth = 2.5..style = PaintingStyle.stroke;
-    final dots = Paint()..color = Colors.yellowAccent;
-    for (var i = 0; i < marks.length; i++) {
-      final pt = Offset(marks[i].x * size.width, marks[i].y * size.height);
-      canvas.drawCircle(pt, 5, dots);
-      if (i > 0) canvas.drawLine(Offset(marks[i-1].x * size.width, marks[i-1].y * size.height), pt, paint);
-    }
-  }
-  @override
-  bool shouldRepaint(covariant TrackPainter old) => true;
-}
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cricket-Video-Analyzer-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
