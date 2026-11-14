@@ -1,4 +1,3 @@
-
 import 'package:http/http.dart' as http;
 import 'package:video_thumbnail/video_thumbnail.dart';
 
