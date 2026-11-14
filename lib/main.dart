@@ -117,7 +117,9 @@ static const String aiBackendUrl =
       final oldController = videoController;
       setState(() {
         videoController = localController;
-        loading = false;
+        loading = false; 
+selectedVideoPath = video.path;
+        
       });
       await oldController?.dispose();
     } catch (e) {
