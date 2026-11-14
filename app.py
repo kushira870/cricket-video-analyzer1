@@ -142,8 +142,7 @@ async function analyzeVideo() {
 
 @app.get("/")
 def home():
-    return render_template_string(HTML)
-
+    return HTML, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 @app.post("/analyze")
 def analyze():
