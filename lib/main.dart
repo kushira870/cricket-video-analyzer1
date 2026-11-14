@@ -43,6 +43,12 @@ class CricketHome extends StatefulWidget {
 }
 
 class _CricketHomeState extends State<CricketHome> {
+String? selectedVideoPath;
+bool analyzing = false;
+
+static const String aiBackendUrl =
+    'https://YOUR-BACKEND-URL/analyze';
+
   final ImagePicker picker = ImagePicker();
   final TextEditingController playerController =
       TextEditingController();
